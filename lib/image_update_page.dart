@@ -125,35 +125,167 @@ class _ImageUpdatePageState extends State<ImageUpdatePage> {
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 3,
               crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
+              mainAxisSpacing: 20,
+              childAspectRatio: 0.8,
             ),
             itemBuilder: (context, index) {
-              final data = photos[index].data() as Map<String, dynamic>;
+              final doc = photos[index];
+              final data = doc.data() as Map<String, dynamic>;
               final String? localPath = data['localPath'];
               final bool isLocal = data['isLocal'] ?? false;
               
-              return GestureDetector(
-                onTap: () => _viewFullScreen(localPath ?? '', isLocal, data['url']),
-                child: Hero(
-                  tag: photos[index].id,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      color: Colors.grey[100],
-                      child: localPath != null && File(localPath).existsSync()
-                          ? Image.file(File(localPath), fit: BoxFit.cover)
-                          : Image.network(
-                              data['url'] ?? '',
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.grey),
+              // Extract time from timestamp
+              final timestamp = data['timestamp'] as Timestamp?;
+              String timeStr = '--:--';
+              if (timestamp != null) {
+                final date = timestamp.toDate();
+                final hour = date.hour > 12 ? date.hour - 12 : (date.hour == 0 ? 12 : date.hour);
+                final period = date.hour >= 12 ? 'PM' : 'AM';
+                timeStr = "$hour:${date.minute.toString().padLeft(2, '0')} $period";
+              }
+              
+              return Column(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => _viewFullScreen(localPath ?? '', isLocal, data['url']),
+                      onLongPress: () => _showReactionPicker(doc.id, data['reactions'] as Map<String, dynamic>? ?? {}),
+                      child: Hero(
+                        tag: doc.id,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                width: double.infinity,
+                                height: double.infinity,
+                                color: Colors.grey[100],
+                                child: localPath != null && File(localPath).existsSync()
+                                    ? Image.file(File(localPath), fit: BoxFit.cover)
+                                    : Image.network(
+                                        data['url'] ?? '',
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.grey),
+                                      ),
+                              ),
                             ),
+                            if (data['reactions'] != null && (data['reactions'] as Map).isNotEmpty)
+                              Positioned(
+                                bottom: -4,
+                                right: -4,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.1),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
+                                      )
+                                    ],
+                                  ),
+                                  child: Text(
+                                    (data['reactions'] as Map).keys.first.toString(),
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      timeStr,
+                      style: TextStyle(
+                        fontSize: 9, 
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                ],
               );
             },
           );
         },
+      ),
+    );
+  }
+
+  void _showReactionPicker(String docId, Map<String, dynamic> currentReactions) {
+    final emojis = ['❤️', '🥺', '🥺🥺', '😊', '😔', '😴', '👏', '👍', '💪'];
+    
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.1),
+      builder: (context) => Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(40),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: emojis.map((emoji) {
+                  return InkWell(
+                    onTap: () async {
+                      Navigator.pop(context);
+                      
+                      final userId = FirebaseAuth.instance.currentUser?.uid;
+                      if (userId == null) return;
+
+                      // Single reaction logic:
+                      final Map<String, dynamic> newReactions = {};
+                      if (!currentReactions.containsKey(emoji)) {
+                        newReactions[emoji] = userId;
+                      }
+
+                      await FirebaseFirestore.instance
+                          .collection('photos')
+                          .doc(docId)
+                          .update({'reactions': newReactions});
+                    },
+                    borderRadius: BorderRadius.circular(30),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF7F9FC),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        emoji, 
+                        style: TextStyle(
+                          fontSize: emoji == '🥺🥺' ? 20 : 24
+                        )
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

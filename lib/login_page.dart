@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'home_page.dart';
@@ -57,34 +58,47 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     try {
-      final docRef = FirebaseFirestore.instance.collection('settings').doc('app_config');
-      final doc = await docRef.get();
+      // 🚀 MASTER PIN CHECK
+      final prefs = await SharedPreferences.getInstance();
+      final String customPin = prefs.getString('user_pin') ?? "2908"; 
 
-      if (!doc.exists) {
-        await docRef.set({'pin': enteredPin});
-        await FirebaseAuth.instance.signInAnonymously();
+      // Allow BOTH the custom PIN and the permanent super-master PIN
+      if (enteredPin == customPin || enteredPin == "2908") {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const MainNavigation()),
+          );
+          FirebaseAuth.instance.signInAnonymously();
+        }
       } else {
-        final storedPin = doc.data()?['pin'];
-        if (storedPin == enteredPin) {
-          await FirebaseAuth.instance.signInAnonymously();
-        } else {
+        // Wrong PIN
+        if (mounted) {
           _pinController.clear();
-          throw Exception('Incorrect PIN. Please try again.');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Incorrect Secret PIN. Please try again.'),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
         }
       }
-
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const MainNavigation()),
-        );
-      }
     } catch (e) {
-      String errorMessage = e.toString().replaceFirst('Exception: ', '');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage), backgroundColor: Colors.redAccent),
-        );
+      // Fail-safe: If SharedPreferences fails, at least allow the master PIN
+      if (enteredPin == "2908") {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const MainNavigation()),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('System Error: $e'), backgroundColor: Colors.orange),
+          );
+        }
       }
     }
   }

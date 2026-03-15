@@ -248,7 +248,12 @@ class _ChatViewState extends State<ChatView> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         GestureDetector(
-                          onLongPress: () => _showReactionPicker(doc.id, reactions),
+                          onLongPress: () => _showMessageOptions(
+                            doc.id, 
+                            data['text'] ?? '', 
+                            data['userId'] ?? '', 
+                            reactions
+                          ),
                           child: Stack(
                             clipBehavior: Clip.none,
                             children: [
@@ -356,45 +361,39 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  void _showReactionPicker(String messageId, Map<String, dynamic> currentReactions) {
+  void _showMessageOptions(String messageId, String currentText, String originalUserId, Map<String, dynamic> currentReactions) {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final isOwner = currentUserId == originalUserId;
     final emojis = ['❤️', '🥺', '🥺🥺', '😊', '😔', '😴', '👏', '👍', '💪'];
-    
-    showDialog(
+
+    showModalBottomSheet(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.1),
-      builder: (context) => Center(
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 20),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(40),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: SingleChildScrollView(
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              child: Text('Reactions', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+            ),
+            SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               scrollDirection: Axis.horizontal,
               child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: emojis.map((emoji) {
                   return InkWell(
                     onTap: () async {
                       Navigator.pop(context);
-                      
                       final userId = FirebaseAuth.instance.currentUser?.uid;
                       if (userId == null) return;
 
-                      // "Only one emoji react" logic:
                       final Map<String, dynamic> newReactions = {};
-                      
                       if (!currentReactions.containsKey(emoji)) {
                         newReactions[emoji] = userId;
                       }
@@ -406,25 +405,92 @@ class _ChatViewState extends State<ChatView> {
                     },
                     borderRadius: BorderRadius.circular(30),
                     child: Container(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(12),
                       margin: const EdgeInsets.symmetric(horizontal: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF7F9FC),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFF7F9FC),
                         shape: BoxShape.circle,
                       ),
-                      child: Text(
-                        emoji, 
-                        style: TextStyle(
-                          fontSize: emoji == '🥺🥺' ? 20 : 24
-                        )
-                      ),
+                      child: Text(emoji, style: TextStyle(fontSize: emoji == '🥺🥺' ? 20 : 24)),
                     ),
                   );
                 }).toList(),
               ),
             ),
-          ),
+            if (isOwner) ...[
+              const Divider(height: 32, indent: 24, endIndent: 24),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                leading: const Icon(Icons.edit_outlined, color: Color(0xFF8BAADD)),
+                title: const Text('Edit Message', style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showEditDialog(messageId, currentText);
+                },
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                leading: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                title: const Text('Delete Message', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmDelete(messageId);
+                },
+              ),
+            ],
+            const SizedBox(height: 10),
+          ],
         ),
+      ),
+    );
+  }
+
+  void _showEditDialog(String messageId, String currentText) {
+    final editController = TextEditingController(text: currentText);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Edit Message'),
+        content: TextField(
+          controller: editController,
+          maxLines: null,
+          decoration: const InputDecoration(hintText: 'Type your message...'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8BAADD), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+            onPressed: () async {
+              if (editController.text.isNotEmpty) {
+                await FirebaseFirestore.instance.collection('messages').doc(messageId).update({'text': editController.text, 'isEdited': true});
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Save Changes', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDelete(String messageId) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Delete Message?'),
+        content: const Text('This action cannot be undone. Our secret space will lose this memory.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+              await FirebaseFirestore.instance.collection('messages').doc(messageId).delete();
+              Navigator.pop(context);
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
       ),
     );
   }
