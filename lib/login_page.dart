@@ -121,11 +121,11 @@ class _LoginPageState extends State<LoginPage> {
                   color: const Color(0xFF8BAADD).withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.lock_person_rounded, size: 64, color: Color(0xFF8BAADD)),
+                child: const Icon(Icons.terminal_rounded, size: 64, color: Color(0xFF8BAADD)),
               ),
               const SizedBox(height: 32),
               Text(
-                _isSettingPin ? 'Secure Your Space' : 'Welcome Back',
+                _isSettingPin ? 'Initialization' : 'Engine Debugger',
                 style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF4A6572)),
               ),
               const SizedBox(height: 12),

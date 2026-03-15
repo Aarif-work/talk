@@ -33,112 +33,121 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _showEmergencyAlert(BuildContext context) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.report_problem_rounded,
-                  color: Colors.redAccent,
-                  size: 40,
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Send Emergency Alert?',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF4A6572),
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'This will notify her immediately that you might need urgent attention.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: Colors.black54,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 32),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        side: BorderSide(color: Colors.grey[300]!),
-                      ),
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.redAccent,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        elevation: 0,
-                      ),
-                      onPressed: () async {
-                        final now = DateTime.now();
-                        String period = now.hour >= 12 ? 'PM' : 'AM';
-                        int hour = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
-                        String minute = now.minute.toString().padLeft(2, '0');
-                        String timeStr = "$hour:$minute $period";
-
-                        await FirebaseFirestore.instance.collection('alerts').add({
-                          'message': 'Emergency Alert Sent',
-                          'notes': 'Sent at $timeStr from the space.',
-                          'timestamp': FieldValue.serverTimestamp(),
-                          'timeLabel': 'Today, $timeStr',
-                          'userId': FirebaseAuth.instance.currentUser?.uid,
-                        });
-
-                        // Triggering a 'push_request' collection that a Cloud Function can listen to
-                        await FirebaseFirestore.instance.collection('push_requests').add({
-                          'title': '🚨 Emergency Alert!',
-                          'body': 'Someone needs your attention in Our Space!',
-                          'timestamp': FieldValue.serverTimestamp(),
-                        });
-
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Emergency Alert & Notification Sent!'),
-                            backgroundColor: Colors.redAccent,
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                      },
-                      child: const Text('Send now'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Select Alert Priority',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A6572)),
+            ),
+            const SizedBox(height: 16),
+            _buildAlertOption(
+              context,
+              stage: 1,
+              title: "Stage 1: It's OK",
+              subtitle: "Just checking in, no rush.",
+              color: Colors.green,
+              icon: Icons.check_circle_outline,
+            ),
+            _buildAlertOption(
+              context,
+              stage: 2,
+              title: "Stage 2: Important",
+              subtitle: "Please open the app right now.",
+              color: Colors.orange,
+              icon: Icons.priority_high_rounded,
+            ),
+            _buildAlertOption(
+              context,
+              stage: 3,
+              title: "Stage 3: Critical",
+              subtitle: "Urgent! Need your attention immediately.",
+              color: Colors.redAccent,
+              icon: Icons.warning_rounded,
+            ),
+            const SizedBox(height: 12),
+          ],
         ),
       ),
     );
+  }
+
+  Widget _buildAlertOption(BuildContext context, {required int stage, required String title, required String subtitle, required Color color, required IconData icon}) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+      leading: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+        child: Icon(icon, color: color),
+      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+      onTap: () {
+        Navigator.pop(context);
+        _sendAlert(stage);
+      },
+    );
+  }
+
+  void _sendAlert(int stage) async {
+    String message = "";
+    String body = "";
+    Color snackColor = Colors.green;
+
+    if (stage == 1) {
+      message = "System Ping: OK";
+      body = "Env: production. Connection status verified (200 OK).";
+      snackColor = Colors.green;
+    } else if (stage == 2) {
+      message = "Sync Warning";
+      body = "Local cache mismatch detected. Requesting manual refresh.";
+      snackColor = Colors.orange;
+    } else {
+      message = "System Error: 503";
+      body = "Severe latency in background processes. Immediate app check required.";
+      snackColor = Colors.redAccent;
+    }
+
+    final now = DateTime.now();
+    String period = now.hour >= 12 ? 'PM' : 'AM';
+    int hour = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
+    String minute = now.minute.toString().padLeft(2, '0');
+    String timeStr = "$hour:$minute $period";
+
+    await FirebaseFirestore.instance.collection('alerts').add({
+      'message': message,
+      'notes': 'Sent at $timeStr. $body',
+      'timestamp': FieldValue.serverTimestamp(),
+      'timeLabel': 'Today, $timeStr',
+      'userId': FirebaseAuth.instance.currentUser?.uid,
+      'stage': stage,
+    });
+
+    await FirebaseFirestore.instance.collection('push_requests').add({
+      'title': message, // Uses the tech-style titles
+      'body': body,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Alert Sent: $body'),
+          backgroundColor: snackColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   @override
@@ -151,7 +160,7 @@ class _HomePageState extends State<HomePage> {
             icon: const Icon(Icons.menu_rounded),
             onPressed: () => Globals.scaffoldKey.currentState?.openDrawer(),
           ),
-          title: const Text('Our Space', style: TextStyle(fontWeight: FontWeight.w600)),
+          title: const Text('Flutter Testing', style: TextStyle(fontWeight: FontWeight.w600)),
           actions: [
             IconButton(
               icon: const Icon(Icons.history_rounded),

@@ -20,10 +20,10 @@ class AppDrawer extends StatelessWidget {
             ),
             currentAccountPicture: const CircleAvatar(
               backgroundColor: Colors.white,
-              child: Icon(Icons.favorite_rounded, color: Color(0xFF8BAADD), size: 32),
+              child: Icon(Icons.bug_report_rounded, color: Color(0xFF8BAADD), size: 32),
             ),
             accountName: const Text(
-              'Our Secret Space',
+              'Flutter Testing',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             accountEmail: Text(
