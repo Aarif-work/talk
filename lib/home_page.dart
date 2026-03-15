@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'alert_logs_page.dart';
+import 'app_drawer.dart';
+import 'globals.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -146,8 +148,8 @@ class _HomePageState extends State<HomePage> {
       child: Scaffold(
         appBar: AppBar(
           leading: IconButton(
-            icon: const Icon(Icons.logout_rounded, size: 20),
-            onPressed: () => FirebaseAuth.instance.signOut(),
+            icon: const Icon(Icons.menu_rounded),
+            onPressed: () => Globals.scaffoldKey.currentState?.openDrawer(),
           ),
           title: const Text('Our Space', style: TextStyle(fontWeight: FontWeight.w600)),
           actions: [
@@ -236,34 +238,73 @@ class _ChatViewState extends State<ChatView> {
                 reverse: true,
                 itemCount: messages.length,
                 itemBuilder: (context, index) {
-                  final data = messages[index].data() as Map<String, dynamic>;
+                  final doc = messages[index];
+                  final data = doc.data() as Map<String, dynamic>;
+                  final reactions = data['reactions'] as Map<String, dynamic>? ?? {};
+                  
                   return Align(
                     alignment: Alignment.centerRight,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 4),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: bubbleColor,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            data['text'] ?? '',
-                            style: TextStyle(
-                              color: isHe ? const Color(0xFF4A6572) : const Color(0xFF905A5A),
-                              fontSize: 15,
-                            ),
+                        GestureDetector(
+                          onLongPress: () => _showReactionPicker(doc.id, reactions),
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: bubbleColor,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Text(
+                                  data['text'] ?? '',
+                                  style: TextStyle(
+                                    color: isHe ? const Color(0xFF4A6572) : const Color(0xFF905A5A),
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ),
+                              if (reactions.isNotEmpty)
+                                Positioned(
+                                  bottom: -8,
+                                  right: isHe ? 12 : null,
+                                  left: isHe ? null : 12,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.black.withOpacity(0.05), width: 0.5),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.1),
+                                          blurRadius: 6,
+                                          offset: const Offset(0, 2),
+                                        )
+                                      ],
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: reactions.entries.map((e) {
+                                        return Text(e.key, style: const TextStyle(fontSize: 12));
+                                      }).toList(),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 12, left: 4, right: 4),
+                          padding: const EdgeInsets.only(bottom: 12, left: 16, right: 16, top: 2),
                           child: Text(
                             data['time'] ?? '',
                             style: const TextStyle(
                               fontSize: 10,
                               color: Colors.grey,
+                              fontWeight: FontWeight.w400,
                             ),
                           ),
                         )
@@ -315,6 +356,79 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
+  void _showReactionPicker(String messageId, Map<String, dynamic> currentReactions) {
+    final emojis = ['❤️', '🥺', '🥺🥺', '😊', '😔', '😴', '👏', '👍', '💪'];
+    
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.1),
+      builder: (context) => Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(40),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: emojis.map((emoji) {
+                  return InkWell(
+                    onTap: () async {
+                      Navigator.pop(context);
+                      
+                      final userId = FirebaseAuth.instance.currentUser?.uid;
+                      if (userId == null) return;
+
+                      // "Only one emoji react" logic:
+                      final Map<String, dynamic> newReactions = {};
+                      
+                      if (!currentReactions.containsKey(emoji)) {
+                        newReactions[emoji] = userId;
+                      }
+
+                      await FirebaseFirestore.instance
+                          .collection('messages')
+                          .doc(messageId)
+                          .update({'reactions': newReactions});
+                    },
+                    borderRadius: BorderRadius.circular(30),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF7F9FC),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        emoji, 
+                        style: TextStyle(
+                          fontSize: emoji == '🥺🥺' ? 20 : 24
+                        )
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _sendMessage() async {
     if (_controller.text.isNotEmpty) {
       final text = _controller.text;
@@ -332,6 +446,7 @@ class _ChatViewState extends State<ChatView> {
         'time': timeStr,
         'timestamp': FieldValue.serverTimestamp(),
         'userId': FirebaseAuth.instance.currentUser?.uid,
+        'reactions': {},
       });
     }
   }

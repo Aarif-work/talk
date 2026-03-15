@@ -5,6 +5,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'app_drawer.dart';
+import 'globals.dart';
 
 class ImageUpdatePage extends StatefulWidget {
   const ImageUpdatePage({super.key});
@@ -75,6 +77,10 @@ class _ImageUpdatePageState extends State<ImageUpdatePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.menu_rounded),
+          onPressed: () => Globals.scaffoldKey.currentState?.openDrawer(),
+        ),
         title: const Text('Our Gallery'),
         actions: [
           IconButton(

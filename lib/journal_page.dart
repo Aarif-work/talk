@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'app_drawer.dart';
+import 'globals.dart';
 
 class JournalPage extends StatefulWidget {
   const JournalPage({super.key});
@@ -81,6 +83,10 @@ class _JournalPageState extends State<JournalPage> {
           appBar: AppBar(
             backgroundColor: Colors.white,
             elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.menu_rounded),
+              onPressed: () => Globals.scaffoldKey.currentState?.openDrawer(),
+            ),
             title: const Text('Journal Entries', style: TextStyle(color: Color(0xFF4A6572), fontWeight: FontWeight.bold)),
             actions: [
               IconButton(

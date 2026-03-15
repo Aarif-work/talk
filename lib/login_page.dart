@@ -4,6 +4,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'home_page.dart';
 import 'image_update_page.dart';
 import 'journal_page.dart';
+import 'about_page.dart';
+import 'alert_logs_page.dart';
+import 'app_drawer.dart';
+import 'globals.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -207,6 +211,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
+
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
 
@@ -226,6 +231,8 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: Globals.scaffoldKey,
+      drawer: AppDrawer(),
       body: _pages[_currentIndex],
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
