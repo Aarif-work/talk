@@ -15,11 +15,19 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final _pinController = TextEditingController();
   bool _isSettingPin = false;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _checkIfPinExists();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    // Force sign out to ensure PIN is asked every time app starts
+    await FirebaseAuth.instance.signOut();
+    await _checkIfPinExists();
+    if (mounted) setState(() => _isLoading = false);
   }
 
   Future<void> _checkIfPinExists() async {
@@ -49,15 +57,14 @@ class _LoginPageState extends State<LoginPage> {
       final doc = await docRef.get();
 
       if (!doc.exists) {
-        // App is actually in setup mode
         await docRef.set({'pin': enteredPin});
         await FirebaseAuth.instance.signInAnonymously();
       } else {
-        // Check PIN from database
         final storedPin = doc.data()?['pin'];
         if (storedPin == enteredPin) {
           await FirebaseAuth.instance.signInAnonymously();
         } else {
+          _pinController.clear();
           throw Exception('Incorrect PIN. Please try again.');
         }
       }
@@ -69,24 +76,10 @@ class _LoginPageState extends State<LoginPage> {
         );
       }
     } catch (e) {
-      String errorMessage = e.toString();
-      if (e is FirebaseAuthException) {
-        if (e.code == 'admin-restricted-operation') {
-          errorMessage = 'Please enable "Anonymous Authentication" in your Firebase console settings.';
-        } else {
-          errorMessage = e.message ?? 'Authentication failed';
-        }
-      } else if (errorMessage.contains('Exception: ')) {
-        errorMessage = errorMessage.replaceFirst('Exception: ', '');
-      }
-
+      String errorMessage = e.toString().replaceFirst('Exception: ', '');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.redAccent,
-            duration: const Duration(seconds: 4),
-          ),
+          SnackBar(content: Text(errorMessage), backgroundColor: Colors.redAccent),
         );
       }
     }
@@ -94,62 +87,119 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
     return Scaffold(
+      backgroundColor: const Color(0xFFF7F9FC),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(32.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Icon(
-                  Icons.favorite_rounded,
-                  size: 80,
-                  color: Theme.of(context).primaryColor,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8BAADD).withOpacity(0.1),
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(height: 24),
-                Text(
-                  _isSettingPin ? 'Setup PIN' : 'Enter PIN',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF4A6572),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _isSettingPin ? 'Create a secure access code.' : 'Your private space is locked.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Colors.black54,
-                  ),
-                ),
-                const SizedBox(height: 48),
-                TextField(
+                child: const Icon(Icons.lock_person_rounded, size: 64, color: Color(0xFF8BAADD)),
+              ),
+              const SizedBox(height: 32),
+              Text(
+                _isSettingPin ? 'Secure Your Space' : 'Welcome Back',
+                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF4A6572)),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _isSettingPin ? 'Create a 4-digit PIN to begin.' : 'Enter your secret PIN to unlock.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 15, color: Colors.grey),
+              ),
+              const SizedBox(height: 60),
+              
+              // Pin Display
+              SizedBox(
+                width: 200,
+                child: TextField(
                   controller: _pinController,
                   obscureText: true,
-                  keyboardType: TextInputType.number,
+                  readOnly: true, // Use a custom keypad or system keyboard
+                  autofocus: true,
+                  showCursor: false,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 24, letterSpacing: 16),
+                  style: const TextStyle(fontSize: 32, letterSpacing: 24, fontWeight: FontWeight.bold, color: Color(0xFF4A6572)),
                   decoration: const InputDecoration(
                     hintText: '••••',
-                    hintStyle: TextStyle(letterSpacing: 8),
-                    prefixIcon: null,
+                    hintStyle: TextStyle(color: Colors.grey, letterSpacing: 24),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    fillColor: Colors.transparent,
                   ),
                 ),
-                const SizedBox(height: 32),
-                ElevatedButton(
-                  onPressed: _handleAuth,
-                  child: Text(
-                    _isSettingPin ? 'Start Journey' : 'Unlock',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+              ),
+
+              const SizedBox(height: 40),
+
+              // Simple Grid Keypad
+              GridView.builder(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  childAspectRatio: 1.5,
                 ),
-              ],
-            ),
+                itemCount: 12,
+                itemBuilder: (context, index) {
+                  Widget content;
+                  VoidCallback? action;
+
+                  if (index < 9) {
+                    final num = index + 1;
+                    content = Text('$num', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600));
+                    action = () {
+                      if (_pinController.text.length < 4) {
+                        setState(() => _pinController.text += num.toString());
+                        if (_pinController.text.length == 4) _handleAuth();
+                      }
+                    };
+                  } else if (index == 9) {
+                    content = const Icon(Icons.backspace_outlined, color: Colors.redAccent);
+                    action = () {
+                      if (_pinController.text.isNotEmpty) {
+                        setState(() => _pinController.text = _pinController.text.substring(0, _pinController.text.length - 1));
+                      }
+                    };
+                  } else if (index == 10) {
+                    content = const Text('0', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600));
+                    action = () {
+                      if (_pinController.text.length < 4) {
+                        setState(() => _pinController.text += '0');
+                        if (_pinController.text.length == 4) _handleAuth();
+                      }
+                    };
+                  } else {
+                    content = const Icon(Icons.check_circle_rounded, color: Colors.green, size: 32);
+                    action = _handleAuth;
+                  }
+
+                  return InkWell(
+                    onTap: action,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Center(child: content),
+                  );
+                },
+              ),
+              
+              const SizedBox(height: 20),
+              if (_isSettingPin)
+                TextButton(
+                  onPressed: () => _pinController.clear(),
+                  child: const Text('Clear', style: TextStyle(color: Colors.grey)),
+                ),
+            ],
           ),
         ),
       ),

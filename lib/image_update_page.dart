@@ -1,35 +1,91 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class ImageUpdatePage extends StatelessWidget {
+class ImageUpdatePage extends StatefulWidget {
   const ImageUpdatePage({super.key});
 
   @override
+  State<ImageUpdatePage> createState() => _ImageUpdatePageState();
+}
+
+class _ImageUpdatePageState extends State<ImageUpdatePage> {
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickAndSaveImage(ImageSource source) async {
+    try {
+      final XFile? image = await _picker.pickImage(source: source, imageQuality: 80);
+      
+      if (image == null) return;
+
+      final directory = await getApplicationDocumentsDirectory();
+      final fileName = p.basename(image.path);
+      final String localPath = p.join(directory.path, fileName);
+      
+      await File(image.path).copy(localPath);
+
+      await FirebaseFirestore.instance.collection('photos').add({
+        'localPath': localPath,
+        'timestamp': FieldValue.serverTimestamp(),
+        'userId': FirebaseAuth.instance.currentUser?.uid,
+        'isLocal': true,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(source == ImageSource.camera ? '📸 Photo captured!' : '✨ Photo added!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    }
+  }
+
+  void _viewFullScreen(String path, bool isLocal, String? url) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              child: isLocal && path.isNotEmpty
+                  ? Image.file(File(path))
+                  : Image.network(url ?? '', fit: BoxFit.contain),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Our Gallery'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add_photo_alternate_rounded),
-            onPressed: () async {
-              // Mock adding an image URL to Firestore
-              await FirebaseFirestore.instance.collection('photos').add({
-                'url': 'https://picsum.photos/400?random=${DateTime.now().millisecondsSinceEpoch}',
-                'timestamp': FieldValue.serverTimestamp(),
-                'userId': FirebaseAuth.instance.currentUser?.uid,
-              });
-              
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Adding magic to your gallery...'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            },
+            icon: const Icon(Icons.camera_alt_rounded, color: Color(0xFF8BAADD)),
+            onPressed: () => _pickAndSaveImage(ImageSource.camera),
           ),
+          IconButton(
+            icon: const Icon(Icons.add_a_photo_rounded, color: Color(0xFF8BAADD)),
+            onPressed: () => _pickAndSaveImage(ImageSource.gallery),
+          ),
+          const SizedBox(width: 8),
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
@@ -38,13 +94,8 @@ class ImageUpdatePage extends StatelessWidget {
             .orderBy('timestamp', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return const Center(child: Text('Something went wrong'));
-          }
-
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+          if (snapshot.hasError) return const Center(child: Text('Something went wrong'));
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
 
           final photos = snapshot.data!.docs;
 
@@ -55,10 +106,8 @@ class ImageUpdatePage extends StatelessWidget {
                 children: [
                   Icon(Icons.photo_library_outlined, size: 64, color: Colors.grey[300]),
                   const SizedBox(height: 16),
-                  const Text(
-                    'No photos in your gallery yet',
-                    style: TextStyle(color: Colors.grey),
-                  ),
+                  const Text('Your gallery is empty', style: TextStyle(color: Colors.grey)),
+                  const Text('Tap icons to add from camera or gallery.', style: TextStyle(color: Colors.grey, fontSize: 12)),
                 ],
               ),
             );
@@ -74,19 +123,25 @@ class ImageUpdatePage extends StatelessWidget {
             ),
             itemBuilder: (context, index) {
               final data = photos[index].data() as Map<String, dynamic>;
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  color: Colors.grey[200],
-                  child: Image.network(
-                    data['url'] ?? '',
-                    fit: BoxFit.cover,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return const Center(child: Icon(Icons.image, color: Colors.white));
-                    },
-                    errorBuilder: (context, error, stackTrace) => 
-                        const Icon(Icons.broken_image, color: Colors.grey),
+              final String? localPath = data['localPath'];
+              final bool isLocal = data['isLocal'] ?? false;
+              
+              return GestureDetector(
+                onTap: () => _viewFullScreen(localPath ?? '', isLocal, data['url']),
+                child: Hero(
+                  tag: photos[index].id,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      color: Colors.grey[100],
+                      child: localPath != null && File(localPath).existsSync()
+                          ? Image.file(File(localPath), fit: BoxFit.cover)
+                          : Image.network(
+                              data['url'] ?? '',
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.grey),
+                            ),
+                    ),
                   ),
                 ),
               );
